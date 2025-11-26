@@ -56,7 +56,7 @@ const VisualizationSection = () => {
         // Switch tabs immediately to show loading state
         setActiveTab('imagery'); 
 
-        const response = await fetch('https://satellitevision-f097.onrender.com/api/analyze-aoi', {
+        const response = await fetch('http://localhost:8000/api/analyze-aoi', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(bounds),
