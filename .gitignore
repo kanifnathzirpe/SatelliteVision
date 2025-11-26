@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# backend files
+backend/venv/
+backend/__pycache__/
+backend/outputs/
+backend/models/
+backend/test_data/

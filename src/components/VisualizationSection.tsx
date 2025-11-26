@@ -1,226 +1,141 @@
+// src/components/VisualizationSection.tsx
 import { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { 
-  MapPin, 
-  Image, 
-  Layers, 
-  Activity
-} from 'lucide-react';
+import { MapPin, Layers, Activity, AlertTriangle } from 'lucide-react';
 import MapAOISelector from './MapAOISelector';
 import ImageComparison from './ImageComparison';
 import ChangeDetectionOverlay from './ChangeDetectionOverlay';
 
-interface AOIBounds {
-  north: number;
-  south: number;
-  east: number;
-  west: number;
+interface AOIBounds { north: number; south: number; east: number; west: number; }
+export interface AnalysisResult {
+  summary: {
+    percent_change: number;
+    confidence_pct: number;
+    categories: {
+      Deforestation: number;
+      Urban: number;
+      Agriculture: number;
+    };
+  };
+  overlays: { class_png?: string; };
+  beforeImage?: string;
+  afterImage?: string;
 }
+
+const LoadingState = ({ title, subtitle }: { title: string; subtitle: string }) => (
+    <div className="flex flex-col items-center justify-center h-full text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+        <p className="font-semibold text-lg">{title}</p>
+        <p className="text-muted-foreground">{subtitle}</p>
+    </div>
+);
+
+const ErrorState = ({ message }: { message: string }) => (
+    <div className="flex flex-col items-center justify-center h-full text-center text-destructive p-4">
+        <AlertTriangle className="w-12 h-12 mb-4" />
+        <p className="font-semibold text-lg">Analysis Failed</p>
+        <p className="text-sm">{message}</p>
+    </div>
+);
+
 
 const VisualizationSection = () => {
   const [activeTab, setActiveTab] = useState('aoi');
-  const [selectedAOI, setSelectedAOI] = useState<AOIBounds | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const visualizationFeatures = [
-    {
-      id: 'aoi',
-      title: 'AOI Selection',
-      icon: MapPin,
-      description: 'Select Area of Interest on the map for analysis'
-    },
-    {
-      id: 'imagery',
-      title: 'LISS-IV Images',
-      icon: Layers,
-      description: 'Display before/after satellite imagery comparison'
-    },
-    {
-      id: 'detection',
-      title: 'Change Detection',
-      icon: Activity,
-      description: 'Heatmap overlay showing detected changes'
-    }
-  ];
-
-  const handleAOISelected = (bounds: AOIBounds | null) => {
+  const handleAOISelected = async (bounds: AOIBounds | null) => {
     if (bounds) {
       setIsLoading(true);
-      setSelectedAOI(bounds);
-      console.log('AOI Selected:', bounds);
+      setAnalysisResult(null);
+      setError(null);
       
-      // Simulate data fetching (replace with actual backend call later)
-      setTimeout(() => {
+      try {
+        // Switch tabs immediately to show loading state
+        setActiveTab('imagery'); 
+
+        const response = await fetch('http://localhost:8000/api/analyze-aoi', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bounds),
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.detail || "An unknown API error occurred.");
+        }
+        const data: AnalysisResult = await response.json();
+        setAnalysisResult(data);
+      } catch (err: any) {
+        setError(err.message);
+        console.error("Analysis failed:", err);
+      } finally {
         setIsLoading(false);
-      }, 2000);
+      }
     } else {
-      setSelectedAOI(null);
-      setIsLoading(false);
+      setAnalysisResult(null);
+      setError(null);
     }
   };
 
+  const renderContent = () => {
+      // Prioritize error and loading states across all tabs except AOI
+      if (activeTab !== 'aoi') {
+        if (error) return <ErrorState message={error} />;
+        if (isLoading) return <LoadingState title="Analyzing Satellite Imagery" subtitle="This may take a moment..." />;
+      }
+      
+      switch(activeTab) {
+          case 'aoi': return <MapAOISelector onAOISelected={handleAOISelected} />;
+          case 'imagery': return <ImageComparison result={analysisResult} />;
+          case 'detection': return <ChangeDetectionOverlay result={analysisResult} />;
+          default: return null;
+      }
+  };
+
   return (
-    <section id="visualization" className="py-24 space-bg">
+    <section id="visualization" className="py-24">
       <div className="container mx-auto px-4">
-        {/* Section Header */}
-        <div className="text-center mb-16">
-          <div className="inline-flex items-center space-x-2 glass-card px-4 py-2 mb-6">
-            <Image className="w-4 h-4 text-accent" />
-            <span className="font-montserrat text-sm font-medium text-muted-foreground">
-              Visualization Engine
-            </span>
-          </div>
-          
-          <h2 className="font-orbitron font-bold text-3xl md:text-5xl mb-6">
-            <span className="bg-gradient-cosmic bg-clip-text text-transparent">
-              Interactive Analysis
-            </span>
-          </h2>
-          
-          <p className="font-montserrat text-lg text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-            Interactive workflow: Select AOI → Load LISS-IV imagery → Analyze changes → View results
-          </p>
+         {/* ... (Header and Tabs remain the same) ... */}
+         <div className="flex flex-wrap justify-center gap-4 mb-12">
+            {[{id: 'aoi', title: 'AOI Selection', icon: MapPin}, {id: 'imagery', title: 'LISS-IV Images', icon: Layers}, {id: 'detection', title: 'Change Detection', icon: Activity}].map((feature) => (
+                <Button key={feature.id} variant={activeTab === feature.id ? "default" : "outline"} className={`glass-card ${activeTab === feature.id ? 'bg-gradient-cosmic' : ''}`} onClick={() => setActiveTab(feature.id)}>
+                    <feature.icon className="w-4 h-4 mr-2" /> {feature.title}
+                </Button>
+            ))}
         </div>
 
-        {/* Feature Tabs */}
-        <div className="flex flex-wrap justify-center gap-4 mb-12">
-          {visualizationFeatures.map((feature) => {
-            const IconComponent = feature.icon;
-            return (
-              <Button
-                key={feature.id}
-                variant={activeTab === feature.id ? "default" : "outline"}
-                className={`glass-card font-montserrat font-medium transition-all duration-300 ${
-                  activeTab === feature.id 
-                    ? 'bg-gradient-cosmic shadow-glow-primary' 
-                    : 'border-border/50 hover:border-primary/50'
-                }`}
-                onClick={() => setActiveTab(feature.id)}
-              >
-                <IconComponent className="w-4 h-4 mr-2" />
-                {feature.title}
-              </Button>
-            );
-          })}
-        </div>
-
-        {/* Main Visualization Panel */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Visualization Display */}
           <div className="lg:col-span-2">
-            <Card className="glass-card border-border/50 h-full">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="font-orbitron font-semibold text-xl text-foreground mb-2">
-                      {visualizationFeatures.find(f => f.id === activeTab)?.title}
-                    </CardTitle>
-                    <CardDescription className="font-montserrat text-muted-foreground">
-                      {visualizationFeatures.find(f => f.id === activeTab)?.description}
-                    </CardDescription>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    {isLoading && activeTab !== 'aoi' && (
-                      <Badge variant="secondary" className="glass-card font-montserrat text-xs bg-primary/20 text-primary">
-                        Loading...
-                      </Badge>
-                    )}
-                    {selectedAOI && !isLoading && activeTab !== 'aoi' && (
-                      <Badge variant="secondary" className="glass-card font-montserrat text-xs bg-success/20 text-success">
-                        AOI Selected
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-              </CardHeader>
-              
-              <CardContent>
-                {/* Content based on active tab */}
-                {activeTab === 'aoi' && (
-                  <div className="h-[500px] rounded-lg overflow-hidden">
-                    <MapAOISelector onAOISelected={handleAOISelected} />
-                  </div>
-                )}
-                
-                {activeTab === 'imagery' && (
-                  <ImageComparison selectedAOI={selectedAOI} isLoading={isLoading} />
-                )}
-                
-                {activeTab === 'detection' && (
-                  <ChangeDetectionOverlay selectedAOI={selectedAOI} isLoading={isLoading} />
-                )}
-              </CardContent>
+            <Card className="glass-card border-border/50 h-[650px]">
+              <CardContent className="p-2 h-full">{renderContent()}</CardContent>
             </Card>
           </div>
-
-          {/* Analysis Panel */}
           <div className="space-y-6">
-            {/* Statistics Card */}
             <Card className="glass-card border-border/50">
-              <CardHeader>
-                <CardTitle className="font-orbitron font-semibold text-lg text-foreground">
-                  Analysis Statistics
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="font-montserrat text-sm text-muted-foreground">Total Area</span>
-                  <span className="font-montserrat font-semibold text-foreground">2,847 km²</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="font-montserrat text-sm text-muted-foreground">Changes Detected</span>
-                  <span className="font-montserrat font-semibold text-warning">427 km²</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="font-montserrat text-sm text-muted-foreground">Confidence Level</span>
-                  <span className="font-montserrat font-semibold text-success">94.7%</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="font-montserrat text-sm text-muted-foreground">Processing Time</span>
-                  <span className="font-montserrat font-semibold text-primary">3.2 min</span>
-                </div>
-              </CardContent>
+                <CardHeader><CardTitle>Analysis Statistics</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                    {isLoading ? <p className="text-sm text-muted-foreground">Processing...</p> : analysisResult ? (
+                        <>
+                            <StatRow label="Change Detected" value={`${analysisResult.summary.percent_change.toFixed(2)}%`} color="text-warning" />
+                            <StatRow label="Confidence Level" value={`${analysisResult.summary.confidence_pct.toFixed(2)}%`} color="text-success" />
+                        </>
+                    ) : <p className="text-sm text-muted-foreground">Select an AOI to see statistics.</p>}
+                </CardContent>
             </Card>
-
-            {/* Change Types */}
             <Card className="glass-card border-border/50">
-              <CardHeader>
-                <CardTitle className="font-orbitron font-semibold text-lg text-foreground">
-                  Change Categories
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                    <span className="font-montserrat text-sm text-muted-foreground">Deforestation</span>
-                  </div>
-                  <span className="font-montserrat text-sm font-semibold">156 km²</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                    <span className="font-montserrat text-sm text-muted-foreground">Water Bodies</span>
-                  </div>
-                  <span className="font-montserrat text-sm font-semibold">89 km²</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                    <span className="font-montserrat text-sm text-muted-foreground">Urban Growth</span>
-                  </div>
-                  <span className="font-montserrat text-sm font-semibold">182 km²</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                    <span className="font-montserrat text-sm text-muted-foreground">Agriculture</span>
-                  </div>
-                  <span className="font-montserrat text-sm font-semibold">0 km²</span>
-                </div>
-              </CardContent>
+                <CardHeader><CardTitle>Change Categories</CardTitle></CardHeader>
+                <CardContent className="space-y-3">
+                    {isLoading ? <p className="text-sm text-muted-foreground">Processing...</p> : analysisResult ? (
+                        <>
+                            <CategoryRow label="Deforestation" color="bg-red-500" value={analysisResult.summary.categories.Deforestation} />
+                            <CategoryRow label="Urban Growth" color="bg-yellow-500" value={analysisResult.summary.categories.Urban} />
+                            <CategoryRow label="Agriculture" color="bg-green-500" value={analysisResult.summary.categories.Agriculture} />
+                        </>
+                    ) : <p className="text-sm text-muted-foreground">No analysis data available.</p>}
+                </CardContent>
             </Card>
           </div>
         </div>
@@ -228,5 +143,7 @@ const VisualizationSection = () => {
     </section>
   );
 };
+const StatRow = ({ label, value, color }: any) => (<div className="flex justify-between"><span className="text-sm text-muted-foreground">{label}</span><span className={`font-semibold ${color}`}>{value}</span></div>);
+const CategoryRow = ({ label, color, value }: any) => (<div className="flex items-center justify-between"><div className="flex items-center space-x-2"><div className={`w-3 h-3 ${color} rounded-full`}></div><span className="text-sm text-muted-foreground">{label}</span></div><span className="text-sm font-semibold">{value.toLocaleString()} px</span></div>);
 
 export default VisualizationSection;

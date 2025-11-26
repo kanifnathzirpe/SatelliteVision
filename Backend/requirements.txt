@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+python-multipart
+scikit-learn
+matplotlib
+rasterio
+joblib
+scikit-image
+opencv-python-headless
+pystac-client
+planetary-computer
+odc-stac
